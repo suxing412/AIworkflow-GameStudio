@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.exe
+*.zip
+.studio-state.json
+.studio-state.lock
+*.log

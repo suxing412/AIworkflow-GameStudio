@@ -1,0 +1,299 @@
+// runner.js — 执行器（D30/D31/D32）：内嵌 exe 的拉取循环，监制台版"监听器"。
+// 每轮 tick 三种工作：
+//   ① 自动领单：空闲在岗 agent 从池拉单（双闸/额度锁/依赖/一人一张全在 claim 路径）
+//   ② 执行：在途单起执行（试跑=模拟零额度；实弹=真调 codex/claude 无头 CLI，需 实弹解锁）
+//   ③ 质检执行：质检单派给空闲 QA agent 复核 → 走 D10 QA 裁定（QA 只裁不开单）
+// 失败路径（D31）：CLI 崩溃/超时/非零退出 → lifecycle.执行失败（纯本地目录改名，零网络依赖），
+// 由 Claude 会话分诊（重投/上呈/废弃）。停止=不领新单，执行中跑完（同 D26 暂停语义）。
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { spawn } = require('child_process');
+const store = require('./core/store');
+const state = require('./core/state');
+const pool = require('./pool');
+const lifecycle = require('./lifecycle');
+const journal = require('./journal');
+
+// 内存态：正在执行的工作（agentId → { id, kind, startedAt, timer, child }）。
+// exe 重启即清空，tick 为"在途/质检有主办但无执行记录"的单重新拉起（断点恢复）。
+const running = new Map();
+let loopTimer = null;
+let lastTick = null;
+
+const busyTickets = () => new Set([...running.values()].map((e) => e.id));
+function isOn(root) { return !!state.read(root).执行器?.运行; }
+function isDry(root) { return state.read(root).执行器?.试跑 !== false; }
+
+// ---- 项目定位（D32）：工单.项目 → config 注册表 → 仓库路径；完整注册向导属打包后首配 ----
+function projectPath(cfg, t) {
+  const reg = (cfg.项目 && cfg.项目.注册) || {};
+  const name = t.fm.项目 || (cfg.项目 && cfg.项目.默认);
+  const p = name && reg[name] && reg[name].路径;
+  return p && fs.existsSync(p) ? { name, path: p } : null;
+}
+
+// ---- 模型分级（D38 = 停车场 P-5 落地）：贵模型当裁判，便宜模型干体力 ----
+// 解析顺序：agent 个体覆盖(config.agents[].模型) > 工种/池默认(config.模型) > CLI 自带默认(空)
+function pickModel(cfg, kind, agentCfg, poolName) {
+  const m = cfg.模型 || {};
+  if (kind === '质检') return m.质检 || m.claude默认 || '';
+  if (kind === '代核') return m.代核 || m.claude默认 || '';
+  return (agentCfg && agentCfg.模型) || m[poolName + '默认'] || '';
+}
+
+// ---- 实弹 CLI 定位：exe 的 GUI 进程 PATH 不全（探针实证），按候选绝对路径解析 ----
+function resolveCli(poolName, model) {
+  if (poolName === 'codex') {
+    return { cmd: 'codex', args: ['exec', '--dangerously-bypass-approvals-and-sandbox', ...(model ? ['-m', model] : []), '-'] };
+  }
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, 'AppData', 'Roaming', 'npm', 'claude.cmd'),
+    path.join(home, '.local', 'bin', 'claude.exe'),
+    'claude',
+  ];
+  const cmd = candidates.find((c) => c === 'claude' || fs.existsSync(c));
+  return { cmd, args: ['-p', '--permission-mode', 'acceptEdits', ...(model ? ['--model', model] : [])] };
+}
+
+// 代理注入（中台验证过的坑：claude 无头调用必须带代理 env）。
+// 服务启动时已按 环境→注册表→config默认 注入进程环境，这里兜底再补一层 config 默认。
+function proxyEnv(cfg) {
+  const env = { ...process.env };
+  const p = env.HTTPS_PROXY || env.https_proxy || (cfg && cfg.网络 && cfg.网络.代理默认) || '';
+  if (p) { env.HTTPS_PROXY = p; env.HTTP_PROXY = p; env.https_proxy = p; env.http_proxy = p; }
+  return env;
+}
+
+// 岗位协议（用户定稿的 agent 章程）：通用 + 职能特化，组提示词时自动前置。
+// 明文 .md 是唯一事实源——章程改了下一单立即生效，不用改代码。
+function charter(root, 职能) {
+  const dir = path.join(root, '岗位协议');
+  const parts = [];
+  for (const f of ['通用.md', `${职能}.md`]) {
+    try { parts.push(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { /* 缺章程不阻塞执行 */ }
+  }
+  return parts.join('\n\n---\n\n');
+}
+
+// 工单 → 执行提示词（岗位协议 + 范围/不要做/验收标准；中文走 stdin 防 argv 乱码）
+function buildPrompt(root, t, proj) {
+  const ch = charter(root, t.fm.职能);
+  return [
+    ch ? `=== 岗位协议（必须遵守）===\n${ch}\n` : '',
+    `你是「${t.fm.职能}」职能执行 agent，领到工单 ${t.id}：${t.fm.title}`,
+    `工作目录（项目仓库）：${proj.path}`,
+    '只做工单范围内的事，遵守「不要做」，产出满足全部验收标准。',
+    '', '=== 工单正文 ===', t.body || '（无正文）',
+    '', '完成后按通用章程的回执格式输出完工报告，它会作为回执存档。',
+  ].filter(Boolean).join('\n');
+}
+// 委托代核提示词（D34）：Claude 按验收标准逐条只读核验，结论行机器可读
+function buildAuditPrompt(root, t, proj, receiptPath) {
+  const receipt = fs.existsSync(receiptPath) ? fs.readFileSync(receiptPath, 'utf8') : '（无回执）';
+  return [
+    `你代制作人层核验委托验收单 ${t.id}（${t.fm.title}）。只读核验，不改任何文件。`,
+    `项目仓库：${proj.path}`,
+    '对照工单验收标准逐条核验产出与回执，输出核验报告；',
+    '最后单独一行输出机器可读结论：「结论：通过」或「结论：不过」。',
+    '', '=== 工单正文 ===', t.body || '', '', '=== 主办回执 ===', receipt,
+  ].join('\n');
+}
+function buildQaPrompt(root, t, proj, receiptPath) {
+  const receipt = fs.existsSync(receiptPath) ? fs.readFileSync(receiptPath, 'utf8') : '（无回执）';
+  const ch = charter(root, 'QA');
+  return [
+    ch ? `=== 岗位协议（必须遵守）===\n${ch}\n` : '',
+    `你是 QA 复核 agent，对工单 ${t.id}（${t.fm.title}）做质检：只读复核，不改实现（D20）。`,
+    `项目仓库：${proj.path}`,
+    '对照工单验收标准逐条核验主办的产出与回执，按章程格式输出核验结论。',
+    '', '=== 工单正文 ===', t.body || '', '', '=== 主办回执 ===', receipt,
+  ].filter(Boolean).join('\n');
+}
+
+// ---- 执行一份工作（在途执行 / 质检复核）。opts.durMs=0 供测试同步完成；opts.failWith 注入失败 ----
+async function startWork(root, cfg, t, agentId, kind, opts = {}) {
+  if (!agentId || running.has(agentId) || busyTickets().has(t.id)) return false;
+  const rc = cfg.执行器 || {};
+  const entry = { id: t.id, kind, startedAt: opts.nowIso || new Date().toISOString() };
+  running.set(agentId, entry);
+  const finishOk = (note, verdict) => {
+    running.delete(agentId);
+    try { require('./quota').eagerRefresh(cfg); } catch { /* 急刷失败不影响交单 */ } // 完工=额度变化时刻，作废节流窗口让读数跟上
+    const cur = store.find(root, t.id);
+    if (kind === '质检') {
+      if (!cur || cur.state !== '质检') return;
+      store.update(root, t.id, (fm) => { fm.质检人 = agentId; });
+      const r = lifecycle.QA裁定(root, cfg, t.id, true);
+      if (r.ok) journal.append(root, `质检执行完成 ${t.id}（${agentId} · ${note}）`);
+    } else if (kind === '代核') {
+      if (!cur || cur.state !== '待验收') return;
+      // 核验报告追加进回执；通过→自动验收完成（D11 委托代劳），不过→留在待验收等用户裁
+      const rp = path.join(root, '回执', `${t.id}.md`);
+      try { fs.appendFileSync(rp, `\n\n## 委托代核\n${String(note).slice(0, 6000)}\n`, 'utf8'); } catch { /* 无回执文件也不阻塞 */ }
+      store.update(root, t.id, (fm) => { fm.代核 = { 结论: verdict ? '通过' : '不过', 时间: new Date().toISOString() }; });
+      if (verdict) {
+        const r = lifecycle.验收(root, t.id, true);
+        if (r.ok) journal.append(root, `委托代核通过 ${t.id} → 验收完成（Claude 代劳，D11/D34）`);
+      } else {
+        journal.append(root, `委托代核不过 ${t.id}：留在待验收，附核验报告等你裁（不自动打回）`);
+      }
+    } else {
+      if (!cur || cur.state !== '在途') return; // 期间被收回/废弃，不硬交
+      const r = lifecycle.交产出(root, t.id, note);
+      if (r.ok) journal.append(root, `执行完成 ${t.id}（${agentId} · ${kind}）`);
+    }
+  };
+  const failLocal = (why) => { // D31：失败入位为纯本地操作，任何网络状况下都能落位
+    running.delete(agentId);
+    if (kind === '代核') { // 代核失败不动单（待验收无失败转移）：记账后待下轮/人工
+      journal.append(root, `委托代核失败 ${t.id}（${String(why).slice(0, 80)}）——单留待验收`);
+      return;
+    }
+    const cur = store.find(root, t.id);
+    if (cur && (cur.state === '在途' || cur.state === '质检')) lifecycle.执行失败(root, t.id, why);
+  };
+
+  if (opts.failWith) { failLocal(opts.failWith); return true; } // 测试注入
+
+  if (isDry(root)) {
+    const lo = kind === '执行' ? (rc.试跑耗时秒下限 ?? 3) : (rc.质检耗时秒下限 ?? 2);
+    const hi = kind === '执行' ? (rc.试跑耗时秒上限 ?? 8) : (rc.质检耗时秒上限 ?? 5);
+    const durMs = opts.durMs ?? (lo + Math.random() * Math.max(0, hi - lo)) * 1000;
+    const sec = Math.round(durMs / 1000);
+    const receipt = `# 完工报告 ${t.id}（试跑）\n工单编号：${t.id}\n## 做了什么\n试跑模拟${kind}（零额度）\n## QA 章节\n${kind === '质检' ? '模拟复核通过' : '（试跑占位）'}\n## 实际消耗\n模拟 ${sec}s · 0 token\n## 异议\n无\n`;
+    const fin = () => finishOk(kind === '质检' ? `模拟复核 ${sec}s` : kind === '代核' ? `（试跑模拟）逐条对照验收标准：全部通过\n结论：通过` : receipt, true);
+    if (durMs <= 0) fin(); else { entry.timer = setTimeout(fin, durMs); if (entry.timer.unref) entry.timer.unref(); }
+    return true;
+  }
+
+  // ---- 实弹（D32）：真调无头 CLI。经济后果由 实弹解锁 开关把门（server 侧已拦） ----
+  const proj = projectPath(cfg, t);
+  if (!proj) { failLocal('项目未注册或路径不存在（config.项目）'); return true; }
+  const poolName = t.fm.执行池 || 'claude';
+  const agentCfg = (cfg.agents || []).find((a) => a.id === agentId);
+  const model = pickModel(cfg, kind, agentCfg, poolName);
+  const { cmd, args } = resolveCli(kind === '执行' ? poolName : 'claude', model); // 质检/代核都走 claude
+  const receiptPath = path.join(root, '回执', `${t.id}.md`);
+  const prompt = kind === '质检' ? buildQaPrompt(root, t, proj, receiptPath)
+    : kind === '代核' ? buildAuditPrompt(root, t, proj, receiptPath)
+    : buildPrompt(root, t, proj);
+  let child;
+  try {
+    child = spawn(cmd, args, { cwd: proj.path, env: proxyEnv(cfg), windowsHide: true, shell: cmd.endsWith('.cmd'), stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (e) { failLocal('CLI 启动失败：' + e.message); return true; }
+  entry.child = child;
+  const cliPool = kind === '执行' ? poolName : 'claude'; // 质检/代核实际走 claude，流水如实记
+  journal.append(root, `实弹开工 ${t.id}（${agentId} · ${kind} · ${cliPool}${model ? '/' + model : ''} → ${proj.name}）`);
+  let out = '', errout = '';
+  child.stdout.on('data', (d) => { out += d; if (out.length > 400000) out = out.slice(-200000); });
+  child.stderr.on('data', (d) => { errout += d; if (errout.length > 20000) errout = errout.slice(-10000); });
+  const timeoutMs = (rc.执行超时分钟 ?? 30) * 60000;
+  const killer = setTimeout(() => { // 超时树杀（中台同款）：整棵进程树掐掉再标失败
+    try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }); } catch { /* 尽力 */ }
+    failLocal(`执行超时 ${rc.执行超时分钟 ?? 30} 分钟，已树杀`);
+  }, timeoutMs);
+  if (killer.unref) killer.unref();
+  child.on('error', (e) => { clearTimeout(killer); failLocal('CLI 错误：' + e.message); });
+  child.on('close', (code) => {
+    clearTimeout(killer);
+    if (!running.has(agentId)) return; // 已被超时处理
+    if (code === 0) {
+      const text = (String(out).trim().slice(-8000)) || `# 完工报告 ${t.id}\n（CLI 无输出）`;
+      // 代核结论机器可读行：找不到"结论：通过"一律按不过处理（保守，不误自动完成）
+      finishOk(text, kind === '代核' ? /结论[:：]\s*通过/.test(text) : true);
+    } else failLocal(`CLI 退出码 ${code}：${String(errout).split(/\r?\n/).filter(Boolean).slice(-2).join(' ').slice(0, 150)}`);
+  });
+  try { child.stdin.write(prompt, 'utf8'); child.stdin.end(); } catch { /* close 事件兜底 */ }
+  return true;
+}
+
+// 一轮扫描。所有闸都复用既有路径（pool.claim / gates），执行器不自带门。
+async function tick(root, cfg, opts = {}) {
+  if (!isOn(root)) return { skipped: true, reason: '执行器未运行' };
+  const dry = isDry(root);
+  const armed = dry || (cfg.执行器 && cfg.执行器.实弹解锁 === true);
+  const result = { at: opts.nowIso || new Date().toISOString(), 领单: [], 执行: [], 质检: [], 拒因: [] };
+  const agents = (cfg.agents || []).filter((a) => a.上线 !== false);
+  if (!armed) { result.拒因.push('实弹未解锁（config.执行器.实弹解锁），仅试跑可执行'); lastTick = result; return result; }
+
+  const st = state.read(root);
+  const lockedPools = new Set();
+  for (const [k, v] of Object.entries(st.paused || {})) if (k !== 'global' && v) lockedPools.add(k);
+
+  // ① 断点恢复 + 在途执行（待复核单不起工，D36）
+  for (const t of store.list(root, '在途')) {
+    if (!t.fm.主办 || busyTickets().has(t.id)) continue;
+    if (t.fm.待复核) { result.拒因.push(`${t.id} 待复核未解除，不起执行`); continue; }
+    if (!agents.some((a) => a.id === t.fm.主办)) continue; // 退役待归者不起新执行
+    if (await startWork(root, cfg, t, t.fm.主办, '执行', opts)) result.执行.push(t.id);
+  }
+
+  // ② 自动领单（一人一张/双闸/依赖全在 claim 里把关）
+  for (const a of agents) {
+    if (running.has(a.id)) continue;
+    const r = await pool.claim(root, cfg, a.id, opts.nowIso);
+    if (r.ok) {
+      journal.append(root, `领单 ${r.id}（池→在途 · ${a.id} · 执行器自动拉取）`);
+      result.领单.push(r.id);
+      const t = store.find(root, r.id);
+      if (t && await startWork(root, cfg, t, a.id, '执行', opts)) result.执行.push(r.id);
+    } else if (r.gated) { result.拒因.push(r.error); }
+  }
+
+  // ③ 质检执行：派给空闲在岗 QA agent（QA 只裁不开单，D10）
+  const qaFree = agents.filter((a) => a.职能 === 'QA' && !running.has(a.id) && !lockedPools.has(a.执行池)
+    && !pool.inFlight(root).some((x) => x.fm.主办 === a.id));
+  for (const t of store.list(root, '质检')) {
+    if (busyTickets().has(t.id)) continue;
+    const qa = qaFree.shift();
+    if (!qa) break;
+    if (await startWork(root, cfg, t, qa.id, '质检', opts)) result.质检.push(t.id);
+  }
+
+  // ④ 委托代核（D34）：待验收且验收方式=委托、未核过的单，Claude 代劳核验（一次一张，保守）
+  if (!running.has('委托代核')) {
+    const t = store.list(root, '待验收').find((x) => x.fm.验收方式 === '委托' && !x.fm.代核 && !busyTickets().has(x.id));
+    if (t && await startWork(root, cfg, t, '委托代核', '代核', opts)) (result.代核 = result.代核 || []).push(t.id);
+  }
+
+  lastTick = result;
+  return result;
+}
+
+// 循环管理（间隔读 config，不写魔法数字）
+function startLoop(root, getCfg) {
+  stopLoop();
+  const run = () => { tick(root, getCfg()).catch(() => { /* 单轮失败不倒循环 */ }); };
+  const 秒 = (getCfg().执行器 || {}).间隔秒 ?? 15;
+  loopTimer = setInterval(run, 秒 * 1000);
+  if (loopTimer.unref) loopTimer.unref();
+  run();
+}
+function stopLoop() { if (loopTimer) { clearInterval(loopTimer); loopTimer = null; } }
+
+function start(root, getCfg) {
+  state.update(root, (s) => { s.执行器 = { ...(s.执行器 || {}), 运行: true, 试跑: s.执行器?.试跑 !== false }; });
+  journal.append(root, `执行器启动（${isDry(root) ? '试跑模式，零额度' : '实弹模式'}）`);
+  startLoop(root, getCfg);
+}
+function stop(root) {
+  state.update(root, (s) => { s.执行器 = { ...(s.执行器 || {}), 运行: false }; });
+  stopLoop();
+  journal.append(root, '执行器停止（执行中的单跑完为止，不再领新单）');
+}
+
+function status(root, cfg) {
+  const st = state.read(root).执行器 || {};
+  return {
+    运行: !!st.运行, 试跑: st.试跑 !== false,
+    实弹解锁: !!(cfg.执行器 && cfg.执行器.实弹解锁),
+    间隔秒: (cfg.执行器 || {}).间隔秒 ?? 15,
+    执行中: [...running.entries()].map(([agent, e]) => ({ agent, id: e.id, kind: e.kind, startedAt: e.startedAt })),
+    执行失败数: store.list(root, '执行失败').length,
+    上轮: lastTick,
+  };
+}
+
+module.exports = { tick, startWork, start, stop, startLoop, stopLoop, status, running, isOn, isDry, projectPath, resolveCli, pickModel, charter, buildPrompt, buildQaPrompt };
