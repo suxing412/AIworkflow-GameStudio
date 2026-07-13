@@ -2,18 +2,23 @@
 // 只 commit 不 push（推送仍由制作人层决定）；无变更不产生空提交。
 // 教训来源：TK 流水线产出曾 36 个文件躺工作区数日未入库（08 复盘 R-1）。
 const path = require('path');
+const fs = require('fs');
 const { execFile } = require('child_process');
 
 const DIRS = ['草稿', '待投', '池', '在途', '质检', '待验收', '待定夺', '执行失败', '完成', '已归档', '回执', 'journal', '风格库', '岗位协议'];
 
 function commitStudio(root, cb) {
   const done = (ok, note) => { if (cb) cb(ok, note); };
-  const repo = path.resolve(root, '..'); // ai-studio 仓库根（监制台的上一级）
-  const rel = path.basename(root);
-  const targets = DIRS.map((d) => `${rel}/${d}`);
-  const g = (args, next) => execFile('git', ['-C', repo, ...args], { windowsHide: true, timeout: 30000 }, next);
-  g(['rev-parse', '--is-inside-work-tree'], (e) => {
-    if (e) return done(false, '不在 git 仓库内');
+  // 仓库根让 git 自己找（--show-toplevel）：不再假定"工作区上一级是仓库根"——
+  // 套件部署布局（工作区自身即仓库根）曾让记账静默跳过（另会话实测）
+  execFile('git', ['-C', root, 'rev-parse', '--show-toplevel'], { windowsHide: true, timeout: 30000 }, (e0, topOut) => {
+    if (e0) return done(false, '不在 git 仓库内');
+    const repo = String(topOut).trim();
+    const rel = path.relative(repo, path.resolve(root)).replace(/\\/g, '/');
+    // 只 add 实际存在的目录：git add 对不存在的 pathspec 直接报错
+    const targets = DIRS.filter((d) => fs.existsSync(path.join(root, d))).map((d) => (rel ? `${rel}/${d}` : d));
+    if (!targets.length) return done(false, '无可记账目录');
+    const g = (args, next) => execFile('git', ['-C', repo, ...args], { windowsHide: true, timeout: 30000 }, next);
     g(['add', '--', ...targets], (e2) => {
       if (e2) return done(false, 'add 失败');
       g(['diff', '--cached', '--quiet'], (e3) => {

@@ -37,7 +37,12 @@ function parse(file) {
 }
 
 function serialize(fm, body) {
-  return matter.stringify(body || '', fm);
+  // 剔除 undefined 值：js-yaml 对 undefined 直接抛异常——手写工单缺字段（如 更新时间）
+  // 曾在 finishOk 的 store.update 里炸掉整个主进程（0.9.1 实测，用户截图在案）。
+  // 明文即事实源 = 用户会手写工单，序列化必须容忍字段缺失。
+  const clean = {};
+  for (const [k, v] of Object.entries(fm || {})) if (v !== undefined) clean[k] = v;
+  return matter.stringify(body || '', clean);
 }
 
 // 扫描全部状态目录，定位一张单。返回 { id, state, file, fm, body } 或 null。
@@ -85,7 +90,7 @@ function move(root, id, from, to, mutator, nowIso) {
   if (fs.existsSync(dst)) return { ok: false, error: `目标已存在同名单：${to}/${id}` };
   let parsed;
   try { parsed = parse(src); } catch { return { ok: false, error: '源不存在（已被抢走或已流转）' }; }
-  const fm = { ...parsed.fm, 更新时间: nowIso || parsed.fm.更新时间 };
+  const fm = { ...parsed.fm, 更新时间: nowIso || parsed.fm.更新时间 || new Date().toISOString() };
   if (mutator) mutator(fm);
   // 先写目标（带更新后的 fm），再删源；用 rename 保证原子——但要先落盘更新的 fm。
   // 策略：把更新后的内容写进目标临时文件，再 rename 源→占位、目标 tmp→目标，最后删源。
@@ -111,7 +116,7 @@ function move(root, id, from, to, mutator, nowIso) {
 function update(root, id, mutator, nowIso) {
   const t = find(root, id);
   if (!t) return { ok: false, error: '工单不存在' };
-  const fm = { ...t.fm, 更新时间: nowIso || t.fm.更新时间 };
+  const fm = { ...t.fm, 更新时间: nowIso || t.fm.更新时间 || new Date().toISOString() };
   let body = t.body;
   const res = mutator(fm, t);
   if (res && typeof res.body === 'string') body = res.body;

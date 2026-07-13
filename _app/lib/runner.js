@@ -119,12 +119,21 @@ async function startWork(root, cfg, t, agentId, kind, opts = {}) {
   const entry = { id: t.id, kind, startedAt: opts.nowIso || new Date().toISOString() };
   running.set(agentId, entry);
   const finishOk = (note, verdict) => {
+    try { finishOkInner(note, verdict); } catch (e) {
+      // 定时器回调里的异常会成为主进程未捕获异常 → 整个 app 弹窗崩掉（0.9.1 YAML 实测）。
+      // 单张单的收尾失败只准伤自己：记账 + 尝试入执行失败，绝不外抛。
+      running.delete(agentId);
+      journal.append(root, `完工收尾异常 ${t.id}：${String(e.message).slice(0, 100)}——单未流转，待分诊`);
+      try { lifecycle.执行失败(root, t.id, '完工收尾异常：' + String(e.message).slice(0, 80)); } catch { /* 尽力 */ }
+    }
+  };
+  const finishOkInner = (note, verdict) => {
     running.delete(agentId);
     try { require('./quota').eagerRefresh(cfg); } catch { /* 急刷失败不影响交单 */ } // 完工=额度变化时刻，作废节流窗口让读数跟上
     const cur = store.find(root, t.id);
     if (kind === '质检') {
       if (!cur || cur.state !== '质检') return;
-      store.update(root, t.id, (fm) => { fm.质检人 = agentId; });
+      store.update(root, t.id, (fm) => { fm.质检人 = agentId; delete fm.质检失败次数; });
       const r = lifecycle.QA裁定(root, cfg, t.id, true);
       if (r.ok) journal.append(root, `质检执行完成 ${t.id}（${agentId} · ${note}）`);
     } else if (kind === '代核') {
@@ -145,11 +154,30 @@ async function startWork(root, cfg, t, agentId, kind, opts = {}) {
       if (r.ok) journal.append(root, `执行完成 ${t.id}（${agentId} · ${kind}）`);
     }
   };
-  const failLocal = (why) => { // D31：失败入位为纯本地操作，任何网络状况下都能落位
+  const failLocal = (why) => {
+    try { failLocalInner(why); } catch (e) {
+      running.delete(agentId);
+      try { journal.append(root, `失败入位异常 ${t.id}：${String(e.message).slice(0, 100)}`); } catch { /* 尽力 */ }
+    }
+  };
+  const failLocalInner = (why) => { // D31：失败入位为纯本地操作，任何网络状况下都能落位
     running.delete(agentId);
     if (kind === '代核') { // 代核失败不动单（待验收无失败转移）：记账后待下轮/人工
       journal.append(root, `委托代核失败 ${t.id}（${String(why).slice(0, 80)}）——单留待验收`);
       return;
+    }
+    if (kind === '质检') {
+      // 判官阶段失败（多为网络抖动）不打整单：留在质检原地重试，3 次封顶再入执行失败
+      // ——整单失败后重投会连"执行"一起重跑，白烧一遍额度
+      const cur0 = store.find(root, t.id);
+      if (!cur0 || cur0.state !== '质检') return;
+      const n = (Number(cur0.fm.质检失败次数) || 0) + 1;
+      if (n < 3) {
+        store.update(root, t.id, (fm) => { fm.质检失败次数 = n; });
+        journal.append(root, `质检执行失败 ${t.id} 第 ${n}/3 次（${String(why).slice(0, 60)}）——留质检下轮重试`);
+        return;
+      }
+      journal.append(root, `质检执行连败 3 次 ${t.id} → 执行失败分诊`);
     }
     const cur = store.find(root, t.id);
     if (cur && (cur.state === '在途' || cur.state === '质检')) lifecycle.执行失败(root, t.id, why);
@@ -203,7 +231,12 @@ async function startWork(root, cfg, t, agentId, kind, opts = {}) {
       const text = (String(out).trim().slice(-8000)) || `# 完工报告 ${t.id}\n（CLI 无输出）`;
       // 代核结论机器可读行：找不到"结论：通过"一律按不过处理（保守，不误自动完成）
       finishOk(text, kind === '代核' ? /结论[:：]\s*通过/.test(text) : true);
-    } else failLocal(`CLI 退出码 ${code}：${String(errout).split(/\r?\n/).filter(Boolean).slice(-2).join(' ').slice(0, 150)}`);
+    } else {
+      // 失败原因优先 stderr，空则兜底 stdout 尾部——claude CLI 的 "API Error: ..." 打在 stdout，
+      // 只看 stderr 会落库成空白的「CLI 退出码 1：」（另会话实测）
+      const src = String(errout).trim() || String(out).trim();
+      failLocal(`CLI 退出码 ${code}：${src.split(/\r?\n/).filter(Boolean).slice(-2).join(' ').slice(0, 150)}`);
+    }
   });
   try { child.stdin.write(prompt, 'utf8'); child.stdin.end(); } catch { /* close 事件兜底 */ }
   return true;

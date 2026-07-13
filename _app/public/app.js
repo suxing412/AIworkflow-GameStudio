@@ -309,20 +309,28 @@ function timelineHtml(agents, all) {
     </div></div></div></div>`;
 }
 async function viewAgents() {
-  const [d, { all }] = await Promise.all([api('/api/agents'), loadBoard()]);
+  const [d, { all }, run] = await Promise.all([api('/api/agents'), loadBoard(), api('/api/runner').catch(() => ({ 执行中: [] }))]);
+  // 执行中清单（含质检/代核工作）：QA 复核别人单时不是主办，只按手持渲染会假显"空闲"（另会话实测）
+  const working = {}; for (const w of (run.执行中 || [])) working[w.agent] = w;
+  const titleOf = (id) => { const t = all.find((x) => x.id === id); return t ? t.title : ''; };
   const rows = d.agents.map((a) => {
-    const h = a.手持; const busy = !!h;
-    const elapsed = busy && h.领单时间 ? Date.now() - Date.parse(h.领单时间) : 0;
+    const h = a.手持; const w = !h && working[a.id]; // 主办工作优先显示；否则显示判官工作（质检/代核）
+    const busy = !!h || !!w;
+    const since = h ? h.领单时间 : (w ? w.startedAt : '');
+    const elapsed = busy && since ? Date.now() - Date.parse(since) : 0;
     const ratio = Math.min(1, elapsed / (4 * 3600000));
+    const showId = h ? h.id : (w ? w.id : '—');
+    const showTitle = h ? h.title : (w ? `${w.kind}中 · ${titleOf(w.id)}` : (a.上线 === false ? '未上线' : '空闲 · 等待领单'));
+    const pill = h ? stPill(h.state === '质检' ? '质检' : '在途') : (w ? stPill('质检') : '<span class="pill mut">空闲</span>');
     return `<div class="arow2 card r14">
       <div class="av ${busy ? '' : 'idle'}" style="${busy ? 'background:' + (FNHEX[a.职能] || '#888') : ''}">${esc(a.id.slice(0, 2))}</div>
       <div class="who">${esc(a.id)}</div>
       <span class="poolp pill sm fn" style="color:${a.执行池 === 'claude' ? '#6B5BC7' : '#2E7D5B'}">${esc(a.执行池)} 池</span>
-      <div class="mid2"><span class="aid">${busy ? esc(h.id) : '—'}</span>
-        <div class="at ${busy ? '' : 'dim2'}">${busy ? esc(h.title) : (a.上线 === false ? '未上线' : '空闲 · 等待领单')}</div></div>
-      <div class="chips">${fnPill(a.职能)}${busy ? stPill(h.state === '质检' ? '质检' : '在途') : '<span class="pill mut">空闲</span>'}</div>
-      ${busy ? `<div class="rgt"><span class="lbl">已领</span><br/><span class="tm" data-since="${esc(h.领单时间 || '')}">${fmtElapsed(elapsed)}</span>
-        <div class="bar"><i class="${h.state === '质检' ? 'rev' : ''}" style="width:${ratio * 100}%"></i></div><div class="cap">滞留阈值 4h</div></div>`
+      <div class="mid2"><span class="aid">${esc(showId)}</span>
+        <div class="at ${busy ? '' : 'dim2'}">${esc(showTitle)}</div></div>
+      <div class="chips">${fnPill(a.职能)}${pill}</div>
+      ${busy ? `<div class="rgt"><span class="lbl">${h ? '已领' : '复核'}</span><br/><span class="tm" data-since="${esc(since || '')}">${fmtElapsed(elapsed)}</span>
+        <div class="bar"><i class="${(h && h.state === '质检') || w ? 'rev' : ''}" style="width:${ratio * 100}%"></i></div><div class="cap">滞留阈值 4h</div></div>`
       : (a.上线 !== false ? `<button class="btn accent pullbtn" style="min-width:124px" onclick="claim('${esc(a.id)}')">去派单</button>` : '')}
     </div>`;
   }).join('');

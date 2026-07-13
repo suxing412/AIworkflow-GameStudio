@@ -80,6 +80,26 @@ const NO_QA = { ...CFG, agents: CFG.agents.filter((a) => a.职能 !== 'QA') };
     assert.ok(r2.领单.includes('P-07'));
   });
 
+  await t('判官失败不打整单：质检失败原地重试（<3 留质检），3 次封顶入执行失败', async () => {
+    const root = makeRoot(); on(root);
+    seed(root, '质检', { id: 'P-30', 职能: '策划', 主办: '策划-A', 领单时间: new Date().toISOString() });
+    await runner.tick(root, CFG, { ...UN, failWith: '网络抖动' });
+    let cur = store.find(root, 'P-30');
+    assert.equal(cur.state, '质检', '第 1 次失败留质检');
+    assert.equal(cur.fm.质检失败次数, 1);
+    await runner.tick(root, CFG, { ...UN, failWith: '网络抖动' });
+    await runner.tick(root, CFG, { ...UN, failWith: '网络抖动' });
+    assert.equal(store.find(root, 'P-30').state, '执行失败', '3 次封顶入分诊');
+    // 成功路径清计数
+    const root2 = makeRoot(); on(root2);
+    seed(root2, '质检', { id: 'P-31', 职能: '策划', 主办: '策划-A', 领单时间: new Date().toISOString() });
+    await runner.tick(root2, CFG, { ...UN, failWith: 'x' });
+    await runner.tick(root2, CFG, UN);
+    const ok = store.find(root2, 'P-31');
+    assert.equal(ok.state, '待验收');
+    assert.ok(!ok.fm.质检失败次数, '成功后计数清除');
+  });
+
   await t('失败分诊（D31）：重投清主办回池 / 上呈进待定夺', async () => {
     const root = makeRoot();
     seed(root, '执行失败', { id: 'P-08', 职能: '程序', 主办: '程序-A' });
