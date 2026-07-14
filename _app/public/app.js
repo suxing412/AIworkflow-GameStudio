@@ -137,8 +137,41 @@ async function viewHub() {
       <div class="grp pool"><span class="lbl">环境</span><span class="num dim" id="hub-env" title="全链路自检">—</span></div>
       <div class="spacer"></div><span class="subnote">需你处理的项目卡会亮红胶囊</span></div>
     <div class="hubgrid">${cards}
-      <a class="hubcard add card r16" href="#/params"><span>＋ 注册项目</span><span class="subnote">参数页 · 项目注册（一份监制台管所有项目）</span></a></div>`;
+      <a class="hubcard add card r16" href="#/proj-new"><span>＋ 注册新项目</span><span class="subnote">一份监制台管所有项目——注册即接管</span></a></div>`;
 }
+
+/* ===== P0b 注册新项目（D42 追加：注册是进门仪式，不进参数大杂烩）===== */
+function viewProjNew() {
+  return `<div class="p7grid">
+    <div class="formcard card r16"><h3>项目信息</h3>
+      <div class="f-field"><label>项目名（中文/字母数字，≤24 位——它会成为工单编号前缀，如 TK-13）</label>
+        <input id="pn-name" placeholder="如 TK / 甲游戏" autocomplete="off"/></div>
+      <div class="f-field"><label>仓库绝对路径（执行 agent 的目标仓库，目录必须已存在）</label>
+        <input id="pn-path" class="mono" placeholder="D:\\GitHub\\MYGAME"/></div>
+      <div class="f-field"><label>说明（可选，≤60 字）</label><input id="pn-note" placeholder="一句话说明这是什么项目"/></div>
+      <div class="f-field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="pn-def" style="width:16px;height:16px;padding:0"/> 设为默认项目（未盖项目章的工单归它）</label></div>
+      <div class="p7foot"><a class="btn h44" href="#/hub">取消</a>
+        <button class="btn accent h44" onclick="projNewSave(this)">注册并回启动页</button></div></div>
+    <div class="formcard card r16"><h3>注册即接管</h3>
+      <div class="doc2">
+        <p>· <b>一份监制台管所有项目</b>——注册后启动页多一张监控卡，点卡进入该项目的驾驶舱，工单按项目隔离。</p>
+        <p>· <b>执行 agent 会写入这个仓库</b>：领到盖着该项目章的工单后，codex/claude 在此仓库内产出代码与文档（写权限见岗位协议）。</p>
+        <p>· <b>共享资源不用重配</b>：执行器、agent 编制、额度双闸、岗位协议全局一套，新项目即刻可用。</p>
+        <p>· 起草工单时在「项目」下拉里选它；编号建议按 <span class="mono">项目名-序号</span> 起，防跨项目撞号。</p>
+        <p class="dim">改名/删除/换默认在 启动页 ⚙ → 项目注册。</p></div></div></div>`;
+}
+window.projNewSave = async (btn) => {
+  const name = $('pn-name').value.trim(), p = $('pn-path').value.trim(), note = $('pn-note').value.trim();
+  if (!name || !p) return toast('项目名与仓库路径不能为空');
+  btn.disabled = true;
+  const r = await post('/api/config/project', { 动作: '注册', 名称: name, 路径: p, 说明: note });
+  if (!r.ok) { btn.disabled = false; return toast(r.error || '注册失败'); }
+  if ($('pn-def').checked) await post('/api/config/project', { 动作: '设默认', 名称: name });
+  _cfg = null; // 项目表变了，语境缓存作废
+  toast('已注册：' + name);
+  location.hash = '#/hub';
+};
 window.enterProj = (n) => { setProj(n); if (location.hash === '#/' || location.hash === '') route(); else location.hash = '#/'; };
 
 /* ===== P1 总览 ===== */
@@ -1016,6 +1049,7 @@ async function route() {
     if (!projMulti()) setProj(projNames()[0] || '');
     if (h === 'hub') { app.innerHTML = await viewHub(); markIn('hub'); return; }
     if (h === 'params') { app.innerHTML = bshell('参数与额度', '<span class="pill sm mut">全局配置</span>', await viewParams(), '#/hub'); markIn('params'); return; }
+    if (h === 'proj-new') { app.innerHTML = bshell('注册新项目', '<span class="pill sm mut">全局 · 项目注册</span>', viewProjNew(), '#/hub'); markIn('proj-new'); return; }
     if ((m = h.match(/^t\/(.+)$/))) {
       const id = decodeURIComponent(m[1]);
       const d = await api('/api/ticket?id=' + encodeURIComponent(id)).catch(() => ({}));
@@ -1093,7 +1127,7 @@ route();
 // 3s 变更令牌轮询：数据动了才刷新；起草页/弹窗打开时不打扰
 let lastPulse = null;
 setInterval(async () => {
-  if (location.hash.startsWith('#/draft')) return;
+  if (location.hash.startsWith('#/draft') || location.hash.startsWith('#/proj-new')) return;
   if (document.querySelector('.modal2')) return;
   try { const d = await api('/api/pulse'); if (lastPulse && d.token !== lastPulse) route(); lastPulse = d.token; } catch { /* offline */ }
 }, 3000);

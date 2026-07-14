@@ -157,7 +157,8 @@ app.post('/api/config/project', (req, res) => {
     return res.json({ ok: true, 项目: cfg.项目 });
   }
   if (动作 === '注册') {
-    if (!/^[A-Za-z0-9_-]{1,24}$/.test(String(名称 || ''))) return res.status(400).json({ error: '项目名只允许字母数字下划线横线（≤24 位）' });
+    // 中文项目名放行（D42 注册页实测全链路 OK：目录即状态机文件名/编号前缀/过滤都吃中文）
+    if (!/^[\w一-鿿-]{1,24}$/.test(String(名称 || ''))) return res.status(400).json({ error: '项目名只允许中文、字母数字下划线横线（≤24 位）' });
     const p = String(路径 || '').trim();
     if (!p || !fs.existsSync(p)) return res.status(400).json({ error: '路径不存在：' + p.slice(0, 60) });
     cfg.项目.注册[名称] = { 路径: p.replace(/\\/g, '/'), 说明: String(说明 || '').slice(0, 60) };
