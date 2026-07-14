@@ -1,18 +1,66 @@
-/* 监制台视觉 — 一比一复刻 Figma 定稿（Page 1 · P1–P10 + P9b）
-   令牌与几何全部来自定稿：暖纸面/白卡细边/等宽数字/黑导航胶囊/靛蓝行动键/红=功能色 */
+/* 监制台视觉 — 主题 C：语义 token 双主题（暖纸面 2.0 日间 · 暗色玻璃夜间）
+   本文件所有颜色/材质/阴影只准走 :root 令牌——主题切换 = html[data-theme] 换一套令牌值 */
 :root {
+  color-scheme:light;
   --paper:#FAFAF8; --card:#FFFFFF; --ink:#1A1D21; --ink2:#4B5563; --ink3:#8A929E;
   --line:#E4E2DC; --ok:#0D7A5F; --okbg:#EBF7F1; --okln:#B9E0D2; --danger:#B4231F;
   --dangerbg:#FBEAE9; --accent:#4F46E5; --sect:#F0EFEA; --chip:#E3E2DD; --we:#F5F4F0;
   --inbg:#FCFCFB; --gatebg:#FDF3E3; --gateln:#E8CFA0; --gatetx:#7A5A1E;
+  --accent-ink:#4F46E5; /* 靛蓝当"文字"用的档：日间同 accent，夜间提亮保 ≥4.5:1 */
   --mono:"Roboto Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --fn-plan:#4F46E5; --fn-code:#0D7A5F; --fn-art:#A16207; --fn-qa:#4B5563; --fn-asm:#0E7490;
+  --pool-claude:#6B5BC7; --pool-codex:#2E7D5B;
+  --on-accent:#fff; --st-review-bg:#4B5563; --st-done-bg:#EAE9E4;
+  --mask:rgba(26,29,33,.28); --mask-strong:rgba(58,60,64,.5);
+  /* 磨砂只给悬浮层（下拉/弹窗），底面永远是实纸——玻璃在日间只客串 */
+  --frost:rgba(255,255,255,.82); --frost-blur:14px;
+  /* 材质细节：凹槽内影 / 上缘受光 / 状态光晕 / 行动键色影 / 量杆渐变 */
+  --groove:rgba(26,29,33,.08); --groove-soft:rgba(26,29,33,.05);
+  --edge-hl:rgba(255,255,255,.65); --edge-hl-soft:rgba(255,255,255,.28);
+  --glow-ok:rgba(13,122,95,.35); --glow-live:rgba(180,35,31,.45); --glow-warn:rgba(122,90,30,.4);
+  --accent-glow:rgba(79,70,229,.30);
+  --bar-from:rgba(79,70,229,.45); --bar-to:#4F46E5;
   --ease-out:cubic-bezier(0.22,1,0.36,1); /* out-quint：干脆的减速，不弹跳 */
-  /* 纸张层次阴影（墨色染影，不用纯黑）：sm=桌上的纸页 md=拿起来的纸页 lg=悬浮层 */
+  /* 纸张层次阴影（墨色染影，不用纯黑）：sm=桌上的纸页 md=拿起来的纸页（双层=贴地+浮起） lg=悬浮层 */
   --shadow-sm:0 1px 2px rgba(26,29,33,.04);
-  --shadow-md:0 4px 14px rgba(26,29,33,.07);
+  --shadow-md:0 4px 14px rgba(26,29,33,.07), 0 1px 2px rgba(26,29,33,.04);
   --shadow-lg:0 12px 32px rgba(26,29,33,.12), 0 2px 8px rgba(26,29,33,.06);
 }
+/* ===== 主题 C · 夜间「暗色玻璃」：只换令牌值，几何与组件规则零改动 =====
+   取色=Figma 定稿 P1-DG（60:2）：底 #0B0D10 / 玻璃=白 5–9% 填充+10–16% 描边 /
+   霓虹只给状态与职能 / 极光只做背景点缀 / 全部文本对比 ≥4.5:1 */
+html[data-theme="glass"] {
+  color-scheme:dark; /* 原生控件（select 弹出菜单/滚动条）跟着入夜 */
+  --paper:#0B0D10; --card:rgba(255,255,255,.05); --ink:#F2F4F8; --ink2:#B9C1CD; --ink3:#76808F;
+  --line:rgba(255,255,255,.10); --ok:#2FD6A0; --okbg:rgba(47,214,160,.12); --okln:rgba(47,214,160,.32);
+  --danger:#FF5D57; --dangerbg:rgba(255,93,87,.13); --accent:#6E63FF; --accent-ink:#9D93FF;
+  --sect:rgba(255,255,255,.04); --chip:rgba(255,255,255,.09); --we:rgba(255,255,255,.06);
+  --inbg:rgba(255,255,255,.05); --gatebg:rgba(232,180,90,.12); --gateln:rgba(232,180,90,.35); --gatetx:#E8B45A;
+  --fn-plan:#8F84FF; --fn-code:#2FD6A0; --fn-art:#E8B45A; --fn-qa:#9BA6B5; --fn-asm:#4CC3E0;
+  --pool-claude:#9D8FFF; --pool-codex:#3ED6A8;
+  --on-accent:#fff; --st-review-bg:#8A93A5; --st-done-bg:rgba(255,255,255,.08);
+  --mask:rgba(0,0,0,.5); --mask-strong:rgba(0,0,0,.65);
+  --frost:rgba(20,23,28,.78); --frost-blur:28px; /* 悬浮层玻璃更厚：玻璃强度=层级 */
+  --groove:rgba(0,0,0,.5); --groove-soft:rgba(0,0,0,.35);
+  --edge-hl:rgba(255,255,255,.16); --edge-hl-soft:rgba(255,255,255,.12);
+  --glow-ok:rgba(47,214,160,.4); --glow-live:rgba(255,93,87,.5); --glow-warn:rgba(232,180,90,.45);
+  --accent-glow:rgba(110,99,255,.45);
+  --bar-from:rgba(110,99,255,.5); --bar-to:#6E63FF;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:0 6px 18px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.35);
+  --shadow-lg:0 16px 40px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.4);
+}
+/* 极光点缀：两团超模糊的冷光钉死在角落，fixed 零重排；只在夜间存在 */
+html[data-theme="glass"] body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:radial-gradient(640px 420px at 12% -4%, rgba(110,99,255,.14), transparent 70%),
+             radial-gradient(720px 520px at 92% 104%, rgba(47,214,160,.09), transparent 70%); }
+/* 玻璃卡顶缘 1px 受光：暗底上才可见（白卡上是无效像素，日间不加）。
+   悬停/按下要显式带上高光，否则本规则特异度更高会吃掉抬影反馈 */
+html[data-theme="glass"] .card { box-shadow:var(--shadow-sm), inset 0 1px 0 var(--edge-hl); }
+html[data-theme="glass"] .bcard2:hover, html[data-theme="glass"] .inbox-row:hover { box-shadow:var(--shadow-md), inset 0 1px 0 var(--edge-hl); }
+html[data-theme="glass"] .bcard2:active, html[data-theme="glass"] .inbox-row:active { box-shadow:inset 0 1px 0 var(--edge-hl); }
+html[data-theme="glass"] body::after { opacity:.02; } /* 噪点在暗底上收敛一点 */
+
 * { box-sizing:border-box; }
 html { background:var(--paper); scrollbar-gutter:stable; scroll-behavior:smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } }
@@ -43,9 +91,9 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .searchbox input { width:240px; height:42px; border-radius:21px; padding:0 18px; font-size:13px; }
 .searchbox input::placeholder { color:var(--ink3); }
 .gsr { display:none; position:absolute; top:48px; right:0; width:340px; max-height:320px; overflow-y:auto;
-  background:rgba(255,255,255,.82); backdrop-filter:blur(14px) saturate(1.15); -webkit-backdrop-filter:blur(14px) saturate(1.15);
+  background:var(--frost); backdrop-filter:blur(var(--frost-blur)) saturate(1.15); -webkit-backdrop-filter:blur(var(--frost-blur)) saturate(1.15);
   border:1px solid var(--line); border-radius:12px; padding:6px;
-  box-shadow:var(--shadow-lg); z-index:60; } /* 唯一的磨砂：悬浮在内容之上的层，磨砂在此传达"浮"而非装饰 */
+  box-shadow:var(--shadow-lg); z-index:60; } /* 磨砂=悬浮层专属（下拉/弹窗）：传达"浮"而非装饰，底面永远实纸 */
 .gsr .gsri { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13px; }
 .gsr .gsri:hover { background:var(--sect); }
 .gsr .gsri .gid { font-size:12px; color:var(--ink2); flex-shrink:0; }
@@ -89,9 +137,9 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .pill.fn-plan { color:var(--fn-plan);} .pill.fn-code { color:var(--fn-code);}
 .pill.fn-art { color:var(--fn-art);} .pill.fn-qa { color:var(--fn-qa);} .pill.fn-asm { color:var(--fn-asm);}
 .pill.st-doing { background:var(--ink); color:var(--paper); }
-.pill.st-review { background:#4B5563; color:var(--paper); }
+.pill.st-review { background:var(--st-review-bg); color:var(--paper); }
 .pill.st-accept { background:var(--okbg); color:var(--ok); }
-.pill.st-done { background:#EAE9E4; color:var(--ok); }
+.pill.st-done { background:var(--st-done-bg); color:var(--ok); }
 .pill.st-escal { background:var(--dangerbg); color:var(--danger); }
 .pill.mut { background:var(--chip); color:var(--ink3); }
 .pill.ok { background:var(--okbg); color:var(--ok); }
@@ -106,8 +154,9 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .btn.h44 { height:44px; border-radius:22px; }
 .btn.primary { background:var(--ink); color:var(--paper); border-color:var(--ink); }
 .btn.primary:hover { opacity:.85; color:var(--paper); }
-.btn.accent { background:var(--accent); color:#fff; border-color:var(--accent); }
-.btn.accent:hover { opacity:.88; color:#fff; }
+.btn.accent { background:var(--accent); color:var(--on-accent); border-color:var(--accent);
+  box-shadow:0 5px 14px var(--accent-glow); } /* 行动键带色影：日间版的"发光" */
+.btn.accent:hover { opacity:.88; color:var(--on-accent); }
 .btn.danger-o { color:var(--danger); border-color:#E5B4B2; }
 .btn.danger-o:hover { background:var(--dangerbg); }
 .dim { color:var(--ink3); } .err { color:var(--danger); } .okc { color:var(--ok); }
@@ -144,13 +193,13 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 @keyframes gsrin { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:none; } }
 /* 执行器运行灯：2.4s 呼吸——"工厂开着"的活体感（仅执行器状态卡） */
 #run-dot.on { animation:breathe 2.4s var(--ease-out) infinite; }
-@keyframes breathe { 0%,100% { box-shadow:0 0 0 0 rgba(13,122,95,.35); } 50% { box-shadow:0 0 0 5px rgba(13,122,95,0); } }
+@keyframes breathe { 0%,100% { box-shadow:0 0 0 0 var(--glow-ok); } 50% { box-shadow:0 0 0 5px transparent; } }
 /* 实弹上膛：运行灯转红光呼吸——"武器已上膛"的状态警示（传状态非装饰） */
 #run-dot.on.live { background:var(--danger); animation:breathe-live 1.6s var(--ease-out) infinite; }
-@keyframes breathe-live { 0%,100% { box-shadow:0 0 0 0 rgba(180,35,31,.45); } 50% { box-shadow:0 0 0 6px rgba(180,35,31,0); } }
+@keyframes breathe-live { 0%,100% { box-shadow:0 0 0 0 var(--glow-live); } 50% { box-shadow:0 0 0 6px transparent; } }
 /* 环境非就绪呼吸（总览就绪灯 A 方案）：琥珀=降级，红=阻断 */
 .dot.breathe-warn { animation:breathe-warn 2s var(--ease-out) infinite; }
-@keyframes breathe-warn { 0%,100% { box-shadow:0 0 0 0 rgba(122,90,30,.4); } 50% { box-shadow:0 0 0 5px rgba(122,90,30,0); } }
+@keyframes breathe-warn { 0%,100% { box-shadow:0 0 0 0 var(--glow-warn); } 50% { box-shadow:0 0 0 5px transparent; } }
 .dot.breathe-err { background:var(--danger); animation:breathe-live 1.6s var(--ease-out) infinite; }
 /* 弹窗：200ms 进（缩放+淡入），无编排 */
 .modal2 { animation:modalin 200ms var(--ease-out); }
@@ -211,8 +260,9 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .qrow2 { display:flex; align-items:center; gap:14px; margin-top:16px; }
 .qrow2 .qn { font-family:var(--mono); font-size:12px; color:var(--ink2); width:64px; }
 .qbar { flex:1; height:6px; background:var(--line); border-radius:3px; overflow:hidden;
-  box-shadow:inset 0 1px 1px rgba(26,29,33,.08); } /* 量杆凹槽 */
-.qbar i { display:block; height:100%; background:var(--ink3); border-radius:3px; transition:width .4s ease; }
+  box-shadow:inset 0 1px 1px var(--groove); } /* 量杆凹槽 */
+.qbar i { display:block; height:100%; background:linear-gradient(90deg, var(--bar-from), var(--bar-to));
+  border-radius:3px; transition:width .4s ease; } /* 凹槽+渐变：暖纸 2.0 定稿的量杆材质 */
 .qbar i.hot { background:var(--danger); }
 .qrow2 .qp { font-family:var(--mono); font-size:12px; font-weight:500; width:44px; text-align:right; }
 .qsub { font-family:var(--mono); font-size:10px; color:var(--ink3); margin:2px 0 0 78px; }
@@ -236,7 +286,7 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
   background:linear-gradient(to top, var(--paper) 70%, transparent); }
 /* 列高过一屏：横向滑块贴在栏目底边，竖向滚到底才见（不悬浮在窗口下缘） */
 .bcol2 { flex:0 0 160px; background:var(--sect); border-radius:14px; padding:16px 10px 12px; min-height:calc(100vh - 120px);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.65); } /* 纸槽上缘受光 */
+  box-shadow:inset 0 1px 0 var(--edge-hl); } /* 纸槽上缘受光 */
 .bcol2.w168 { flex-basis:168px; } .bcol2.w128 { flex-basis:128px; }
 .bcol2 h4 { margin:0 6px 14px; font-size:12.5px; display:flex; justify-content:space-between; align-items:center; }
 .bcol2 h4 .cnt { font-family:var(--mono); font-size:12px; color:var(--ink3); font-weight:400; }
@@ -250,7 +300,7 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .bcard2 .ct { font-size:12px; font-weight:500; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .bcard2 > .pill { position:absolute; left:14px; bottom:10px; }
 .newdraft { display:inline-flex; align-items:center; height:26px; padding:0 11px; border-radius:13px;
-  border:1px solid var(--accent); color:var(--accent); font-size:11px; font-weight:500; background:var(--card); }
+  border:1px solid var(--accent-ink); color:var(--accent-ink); font-size:11px; font-weight:500; background:var(--card); }
 
 /* ===== 在途 · 执行时间轴（甘特并入） ===== */
 .tlcard { padding:18px 24px; margin-bottom:14px; }
@@ -262,9 +312,9 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .tlaxis { position:relative; height:20px; }
 .tltick { position:absolute; top:2px; transform:translateX(-100%); font-family:var(--mono); font-size:9px; color:var(--ink3); }
 .tllane { position:relative; height:22px; margin:4px 0; background:var(--sect); border-radius:6px;
-  box-shadow:inset 0 1px 2px rgba(26,29,33,.05); } /* 轨道凹槽 */
+  box-shadow:inset 0 1px 2px var(--groove-soft); } /* 轨道凹槽 */
 .tlseg { position:absolute; top:3px; height:16px; border-radius:5px; opacity:.85; cursor:pointer;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.28); } /* 段条上缘受光，给"实体条"质感 */
+  box-shadow:inset 0 1px 0 var(--edge-hl-soft); } /* 段条上缘受光，给"实体条"质感 */
 .tlseg:hover { opacity:1; }
 .tlseg.on { outline:1.5px solid var(--ink); }
 .tlnow { position:absolute; top:0; width:0; border-left:1.5px dashed var(--danger); pointer-events:none; }
@@ -302,10 +352,12 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 /* ===== P3 在途 ===== */
 .arow2 { border-radius:14px; height:132px; margin-bottom:14px; position:relative; }
 .arow2 .av { position:absolute; left:24px; top:43px; width:46px; height:46px; border-radius:13px;
-  display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:14px; }
+  display:flex; align-items:center; justify-content:center; color:var(--on-accent); font-weight:700; font-size:14px; }
 .arow2 .av.idle { background:var(--chip); color:var(--ink3); }
 .arow2 .who { position:absolute; left:90px; top:34px; font-size:15px; font-weight:700; }
 .arow2 .poolp { position:absolute; left:90px; top:62px; }
+.poolp.pool-claude { color:var(--pool-claude); }
+.poolp.pool-codex { color:var(--pool-codex); }
 .arow2 .mid2 { position:absolute; left:330px; top:24px; right:400px; }
 .arow2 .mid2 .aid { font-family:var(--mono); font-size:12px; color:var(--ink3); font-weight:500; }
 .arow2 .mid2 .at { font-size:15px; font-weight:500; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -353,14 +405,14 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .axcard p { margin:0 0 10px; font-size:12.5px; color:var(--ink2); }
 .addbar { border-radius:12px; height:56px; display:flex; align-items:center; gap:16px; padding:0 26px; cursor:pointer; }
 .addbar:hover { border-color:var(--ink3); }
-.addbar .a1 { color:var(--accent); font-size:13px; font-weight:500; }
+.addbar .a1 { color:var(--accent-ink); font-size:13px; font-weight:500; }
 .artgrid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .artcard { border-radius:12px; padding:16px; }
 .artcard .thumb { height:118px; border-radius:8px; position:relative; overflow:hidden; background:var(--sect);
-  box-shadow:inset 0 1px 2px rgba(26,29,33,.05); }
+  box-shadow:inset 0 1px 2px var(--groove-soft); }
 .artcard .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
 .artcard .thumb.ftype { display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--ink3); letter-spacing:.1em; }
-.artcard .thumb .pill { position:absolute; top:14px; left:14px; background:#fff; }
+.artcard .thumb .pill { position:absolute; top:14px; left:14px; background:var(--card); }
 /* 条目元信息行 + 移出按钮（精选制反向闸） */
 .axmeta { display:flex; align-items:center; gap:10px; margin-top:4px; }
 .axmeta .axdate { font-size:10px; color:var(--ink3); }
@@ -369,7 +421,7 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .axdel:hover { color:var(--danger); background:var(--dangerbg); }
 .artcard .ac .axdel { float:right; }
 /* 入库弹窗遮罩 */
-.mwrap .mback { position:fixed; inset:0; background:rgba(26,29,33,.28); z-index:44; }
+.mwrap .mback { position:fixed; inset:0; background:var(--mask); z-index:44; }
 .mwrap .modal2 { z-index:45; width:460px; padding:24px 28px; }
 .artcard .an { font-size:13px; font-weight:500; margin-top:12px; }
 .artcard .ac { font-family:var(--mono); font-size:9.5px; color:var(--ink3); margin-top:2px; }
@@ -417,13 +469,14 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .poolcard .pr h4 { margin:0; font-size:14px; }
 .poolcard .pr .pstat { font-size:11px; font-weight:500; }
 .poolcard .meta { font-family:var(--mono); font-size:11px; color:var(--ink3); margin:6px 0 12px; }
-.poolcard .pbar { height:8px; background:var(--sect); border-radius:4px; overflow:hidden; }
-.poolcard .pbar i { display:block; height:100%; background:var(--ink3); }
+.poolcard .pbar { height:8px; background:var(--sect); border-radius:4px; overflow:hidden;
+  box-shadow:inset 0 1px 1px var(--groove); }
+.poolcard .pbar i { display:block; height:100%; background:linear-gradient(90deg, var(--bar-from), var(--bar-to)); }
 .poolcard .pbar i.hot { background:var(--danger); }
-.teamrow { border-radius:12px; height:56px; display:flex; align-items:center; gap:14px; padding:0 24px; margin-bottom:12px; position:relative; }
-.teamrow .dot2 { width:24px; height:24px; border-radius:12px; flex-shrink:0; }
+/* 编制行：左缘 4px 职能色书脊条（暖纸 2.0），颜色由行内 var 注入 */
+.teamrow { border-radius:12px; height:56px; display:flex; align-items:center; gap:14px; padding:0 24px; margin-bottom:12px; position:relative;
+  border-left:4px solid var(--line); }
 .teamrow b { font-size:13px; }
-.teamrow .pooln { font-family:var(--mono); font-size:12px; color:var(--ink2); font-weight:500; position:absolute; left:320px; }
 .teamrow .stpill { position:absolute; right:20px; }
 
 /* ===== P7 起草 ===== */
@@ -464,10 +517,11 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 .oprow2 span { font-size:11px; color:var(--ink3); }
 
 /* ===== P9b 排期弹窗 ===== */
-.modal-mask { position:fixed; inset:0; background:rgba(58,60,64,.5); z-index:40; }
+.modal-mask { position:fixed; inset:0; background:var(--mask-strong); z-index:40; }
 .modal2 { position:fixed; z-index:45; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:560px; max-height:88vh; overflow-y:auto; background:var(--card); border:1px solid var(--line);
-  border-radius:20px; padding:28px 32px; }
+  width:560px; max-height:88vh; overflow-y:auto; background:var(--frost); border:1px solid var(--line);
+  backdrop-filter:blur(var(--frost-blur)) saturate(1.15); -webkit-backdrop-filter:blur(var(--frost-blur)) saturate(1.15);
+  border-radius:20px; padding:28px 32px; box-shadow:var(--shadow-lg); } /* 悬浮层磨砂第二处：弹窗（暖纸 2.0） */
 .modal2 h3 { margin:0 0 22px; font-size:18px; display:flex; justify-content:space-between; }
 .modal2 h3 .x { color:var(--ink3); cursor:pointer; font-size:20px; font-weight:400; }
 .modal2 .note { font-size:10.5px; color:var(--ink3); margin-top:14px; }

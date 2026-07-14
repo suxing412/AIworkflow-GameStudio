@@ -39,6 +39,12 @@ async function createWindow() {
   });
   win.on('closed', () => { win = null; });
 
+  // 主题底色同步：渲染层切主题时更新窗口原生底色（暗色下启动/缩放不闪白）
+  ipcMain.removeAllListeners('theme:bg');
+  ipcMain.on('theme:bg', (e, color) => {
+    if (win && typeof color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(color)) win.setBackgroundColor(color);
+  });
+
   // 桌面通知（D37）：待验收/待定夺/执行失败/滞留告警 计数上涨时弹系统通知；
   // 窗口在前台不打扰，点通知拉起窗口。30s 轮询本机 API，失败静默。
   let lastAtt = null;

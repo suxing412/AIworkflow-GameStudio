@@ -4,7 +4,8 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 const api = async (p, opt) => (await fetch(p, opt)).json();
 const post = (p, body) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
 const FN = { 策划: 'var(--fn-plan)', 程序: 'var(--fn-code)', 美术: 'var(--fn-art)', QA: 'var(--fn-qa)', 装配: 'var(--fn-asm)' };
-const FNHEX = { 策划: '#4F46E5', 程序: '#0D7A5F', 美术: '#A16207', QA: '#4B5563', 装配: '#0E7490' };
+// 职能色走 CSS 变量：主题切换（暖纸/玻璃）时内联色自动跟随令牌，不写死 hex
+const FNHEX = { 策划: 'var(--fn-plan)', 程序: 'var(--fn-code)', 美术: 'var(--fn-art)', QA: 'var(--fn-qa)', 装配: 'var(--fn-asm)' };
 const FNCLS = { 策划: 'fn-plan', 程序: 'fn-code', 美术: 'fn-art', QA: 'fn-qa', 装配: 'fn-asm' };
 const STCLS = { 在途: 'st-doing', 质检: 'st-review', 待验收: 'st-accept', 完成: 'st-done', 待定夺: 'st-escal', 执行失败: 'st-escal', 草稿: 'mut', 已归档: 'mut', 待投: '', 池: '' };
 const STPCT = { 草稿: 0, 待投: 0, 池: 0, 在途: 60, 质检: 85, 待定夺: 70, 执行失败: 60, 待验收: 90, 完成: 100, 已归档: 0 };
@@ -297,7 +298,7 @@ function timelineHtml(agents, all) {
   let si = 0; // 段序号：入场按序生长（左→右错峰 40ms，封顶 12 档）
   const lanes = ids.map((id) => `<div class="tllane">${(segs[id] || []).map((g) => {
     const x = (g.s - t0) / 3600000 * pxh; const w = Math.max(6, (g.e - g.s) / 3600000 * pxh);
-    const c = FNHEX[g.t.职能] || '#8A929E';
+    const c = FNHEX[g.t.职能] || 'var(--ink3)';
     return `<span class="tlseg ${g.inflight ? 'on' : ''}" style="--i:${si++};left:${x}px;width:${w}px;background:${c}" title="${esc(g.t.id)} ${esc(g.t.title)}（${g.inflight ? '进行中' : '已交付'}）" onclick="location.hash='#/t/${esc(g.t.id)}'"></span>`;
   }).join('')}</div>`).join('');
   setTimeout(() => { const el = $('tlscroll'); if (el) el.scrollLeft = el.scrollWidth; }, 0);
@@ -323,9 +324,9 @@ async function viewAgents() {
     const showTitle = h ? h.title : (w ? `${w.kind}中 · ${titleOf(w.id)}` : (a.上线 === false ? '未上线' : '空闲 · 等待领单'));
     const pill = h ? stPill(h.state === '质检' ? '质检' : '在途') : (w ? stPill('质检') : '<span class="pill mut">空闲</span>');
     return `<div class="arow2 card r14">
-      <div class="av ${busy ? '' : 'idle'}" style="${busy ? 'background:' + (FNHEX[a.职能] || '#888') : ''}">${esc(a.id.slice(0, 2))}</div>
+      <div class="av ${busy ? '' : 'idle'}" style="${busy ? 'background:' + (FNHEX[a.职能] || 'var(--ink3)') : ''}">${esc(a.id.slice(0, 2))}</div>
       <div class="who">${esc(a.id)}</div>
-      <span class="poolp pill sm fn" style="color:${a.执行池 === 'claude' ? '#6B5BC7' : '#2E7D5B'}">${esc(a.执行池)} 池</span>
+      <span class="poolp pill sm fn ${a.执行池 === 'claude' ? 'pool-claude' : 'pool-codex'}">${esc(a.执行池)} 池</span>
       <div class="mid2"><span class="aid">${esc(showId)}</span>
         <div class="at ${busy ? '' : 'dim2'}">${esc(showTitle)}</div></div>
       <div class="chips">${fnPill(a.职能)}${pill}</div>
@@ -406,7 +407,7 @@ async function viewStyleLib() {
       ${x.isImage ? `<div class="thumb"><img src="/stylelib-files/美术库/${encodeURIComponent(x.name)}" loading="lazy" alt="${esc(x.name)}"/></div>`
     : `<div class="thumb ftype"><span class="mono">${esc(x.ext.replace('.', '').toUpperCase() || 'FILE')}</span></div>`}
       <div class="an" title="${esc(x.name)}">${esc(x.name.replace(/\.[^.]+$/, ''))}</div>
-      <div class="ac">${x.来源 && x.来源.源单 ? `<a class="mono" style="color:var(--accent)" href="#/t/${esc(x.来源.源单)}">${esc(x.来源.源单)}</a>` : '手工'}${x.来源 && x.来源.说明 ? ' · ' + esc(x.来源.说明.slice(0, 16)) : ''}
+      <div class="ac">${x.来源 && x.来源.源单 ? `<a class="mono" style="color:var(--accent-ink)" href="#/t/${esc(x.来源.源单)}">${esc(x.来源.源单)}</a>` : '手工'}${x.来源 && x.来源.说明 ? ' · ' + esc(x.来源.说明.slice(0, 16)) : ''}
         <button class="axdel" title="移出美术库" onclick="artRemove('${esc(x.name)}')">×</button></div></div>`).join('');
   return `<div class="p5grid"><div>
       <div class="sec-h"><h3 class="h17">策划标杆</h3><span class="subnote">提炼式 · 设计公理 · 来源可溯</span></div>${ax}</div>
@@ -443,6 +444,7 @@ function teamRowsHtml(agents) {
   // D38：模型档可选——下拉 = 池默认 + 监测/配置的可选项（window._models 由参数页加载）
   const m = (window._p6cfg && window._p6cfg.模型) || {};
   const av = window._models || {};
+  const pools = Object.keys((window._p6cfg && window._p6cfg.执行池) || { codex: 1, claude: 1 });
   return (agents || []).map((a) => {
     const pool = a.执行池 || 'claude';
     const poolDefault = m[pool + '默认'] || '';
@@ -452,8 +454,11 @@ function teamRowsHtml(agents) {
         ${opts.map((o) => `<option value="${esc(o)}" ${a.模型 === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
         ${a.模型 && !opts.includes(a.模型) ? `<option value="${esc(a.模型)}" selected>${esc(a.模型)}</option>` : ''}
       </select>`;
-    return `<div class="teamrow card"><span class="dot2" style="background:${FNHEX[a.职能] || '#888'}"></span>
-      <b>${esc(a.id)}</b>${fnPill(a.职能)}${sel}<span class="pooln">${esc(a.执行池)} 池</span>
+    const psel = `<select class="mselect mono" title="执行池：决定 CLI 归属与额度闸；切池清模型覆盖，下一单生效" onchange="aPool('${esc(a.id)}', this.value)">
+        ${pools.map((p) => `<option value="${esc(p)}" ${pool === p ? 'selected' : ''}>${esc(p)} 池</option>`).join('')}
+      </select>`;
+    return `<div class="teamrow card" style="border-left-color:${FNHEX[a.职能] || 'var(--line)'}">
+      <b>${esc(a.id)}</b>${fnPill(a.职能)}${psel}${sel}
       <span class="stpill pill sm ${a.上线 === false ? 'mut' : 'ok'}">${a.上线 === false ? '退役待归' : '在岗'}</span></div>`;
   }).join('');
 }
@@ -464,6 +469,26 @@ window.aModel = async (id, v) => {
   if (window._p6cfg) window._p6cfg.agents = r.agents;
   const tl = $('team-list'); if (tl) tl.innerHTML = teamRowsHtml(r.agents);
   toast(`${id} 模型档 → ${v || '池默认'}`);
+};
+// 主题 C：双主题切换——令牌层在 style.css，这里只负责钉 data-theme + 本机记忆 + 同步窗口底色
+const THEME_BG = { paper: '#FAFAF8', glass: '#0B0D10' };
+window.curTheme = () => (document.documentElement.dataset.theme === 'glass' ? 'glass' : 'paper');
+window.themeSet = (v) => {
+  document.documentElement.dataset.theme = v;
+  try { localStorage.setItem('studio-theme', v); } catch { /* 隐私模式等拿不到就算了 */ }
+  if (window.studio && window.studio.setThemeBg) window.studio.setThemeBg(THEME_BG[v] || THEME_BG.paper);
+  document.querySelectorAll('[data-th]').forEach((b) => b.classList.toggle('on', b.dataset.th === v));
+  toast(v === 'glass' ? '已入夜 · 暗色玻璃' : '已回昼 · 暖纸面 2.0');
+};
+if (window.studio && window.studio.setThemeBg) window.studio.setThemeBg(THEME_BG[window.curTheme()]);
+
+// 执行池切换：切池清模型覆盖（服务端保证），重画后模型下拉自动换成新池的可选清单
+window.aPool = async (id, v) => {
+  const r = await post('/api/agent-pool', { id, 池: v });
+  if (!r.ok) return toast(r.error || '失败');
+  if (window._p6cfg) window._p6cfg.agents = r.agents;
+  const tl = $('team-list'); if (tl) tl.innerHTML = teamRowsHtml(r.agents);
+  toast(`${id} → ${v} 池 · 模型回池默认（下一单生效）`);
 };
 async function viewParams() {
   const [c, run, models] = await Promise.all([api('/api/config'), api('/api/runner'), api('/api/models').catch(() => ({}))]);
@@ -484,7 +509,9 @@ async function viewParams() {
       <div class="stepper"><button onclick="qtStep(-60)">−</button><span class="val">${(c.quota && c.quota.claudeMinIntervalSeconds) || 300}</span><button onclick="qtStep(60)">＋</button></div></div>
     <div class="paramcard card"><h4>服务端口</h4><p class="pmeta">重启监制台后生效</p>
       <div class="runbtn"><input id="port-in" class="mono" style="width:84px;height:32px;padding:0 10px;font-size:12px" value="${(c.server && c.server.port) || 4270}"/>
-      <button class="btn h32" style="margin-left:8px" onclick="portSave()">保存</button></div></div>`;
+      <button class="btn h32" style="margin-left:8px" onclick="portSave()">保存</button></div></div>
+    <div class="paramcard card" data-theme-card><h4>外观主题</h4><p class="pmeta">暖纸=日间纸感；玻璃=夜间暗色 · 即点即切，本机记忆</p>
+      <div class="egtoggle"><button class="egbtn ${curTheme() === 'glass' ? '' : 'on'}" data-th="paper" onclick="themeSet('paper')">暖纸</button><button class="egbtn ${curTheme() === 'glass' ? 'on' : ''}" data-th="glass" onclick="themeSet('glass')">玻璃</button></div></div>`;
   // 模型档：池默认 + 裁判档（选项来自 /api/models 监测 + config 增补）
   const mOpt = (pool, cur) => { const list = ((models[pool] && models[pool].可选) || []);
     return `<option value="" ${!cur ? 'selected' : ''}>CLI 默认</option>` + list.map((o) => `<option value="${esc(o)}" ${cur === o ? 'selected' : ''}>${esc(o)}</option>`).join('')
@@ -806,7 +833,7 @@ async function viewDetail(id) {
   if (d.error) return `<p class="err" style="margin-top:30px">${esc(d.error)}</p>`;
   const fm = d.fm, c = d.链 || { 父子: { 父: null, 子: [] }, 依赖: [] };
   const chainRow = (k, v, cls) => `<div class="crow"><span class="ck">${k}</span><span class="cv ${cls || ''}">${v || '—'}</span></div>`;
-  const kidsTxt = (c.父子.子 || []).map((x) => `<a href="#/t/${x.id}" style="color:var(--accent)">${esc(x.id)}</a>(${esc(x.state)})`).join('、');
+  const kidsTxt = (c.父子.子 || []).map((x) => `<a href="#/t/${x.id}" style="color:var(--accent-ink)">${esc(x.id)}</a>(${esc(x.state)})`).join('、');
   let rsecs = '';
   if (d.回执) {
     const secs = { 做了什么: '', 'QA 章节': '', 实际消耗: '', 异议: '' };
@@ -837,10 +864,10 @@ async function viewDetail(id) {
           ${fm.待复核 ? `<span class="pill red" title="${esc(fm.待复核.说明 || '')}">待复核 · ${esc(fm.待复核.锚号 || '')}</span>` : ''}
           ${fm.代核 ? `<span class="pill ${fm.代核.结论 === '通过' ? 'ok' : 'red'}">代核${esc(fm.代核.结论)}</span>` : ''}</div>
         <div class="chain"><div class="clbl">追溯链</div>
-          ${chainRow('父单', c.父子.父 ? `<a href="#/t/${c.父子.父}" style="color:var(--accent)">${esc(c.父子.父)}</a>` : null)}
+          ${chainRow('父单', c.父子.父 ? `<a href="#/t/${c.父子.父}" style="color:var(--accent-ink)">${esc(c.父子.父)}</a>` : null)}
           ${chainRow('子单', kidsTxt)}
           ${chainRow('返工自', c.返工自 ? esc(c.返工自) : null)}
-          ${chainRow('依据', c.依据 ? `<span style="color:var(--accent)">${esc(c.依据)}</span>` : null)}
+          ${chainRow('依据', c.依据 ? `<span style="color:var(--accent-ink)">${esc(c.依据)}</span>` : null)}
           ${chainRow('依赖', (c.依赖 || []).map((x) => `${esc(x.id)}(${esc(x.state)})`).join('、'), 'okc')}</div></div>
       <div class="p8main card r16"><b style="font-size:13px">正文</b><div class="doc2">${d.html || '<p class="dim">无正文</p>'}</div></div>
     </div><div>

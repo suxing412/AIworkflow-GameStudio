@@ -27,9 +27,9 @@ for %%F in ("%~dp0监制台 *.exe") do copy /y "%%F" "%TARGET%\" >nul
 
 echo [3/4] 注册第一个项目（执行 agent 的目标仓库；可留空，稍后在 参数页-项目注册 里加）
 set "PNAME="
-set /p PNAME=项目名（如 TK，直接回车跳过）：
+set /p PNAME=项目名（如 MYGAME，直接回车跳过）：
 if "%PNAME%"=="" goto :launch
-set /p PPATH=项目仓库绝对路径（如 D:\GitHub\TK）：
+set /p PPATH=项目仓库绝对路径（如 D:\GitHub\MYGAME）：
 if not exist "%PPATH%" (
   echo     路径不存在，跳过注册——稍后在参数页里补
   goto :launch

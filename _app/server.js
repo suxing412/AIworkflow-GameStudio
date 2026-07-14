@@ -539,6 +539,24 @@ app.post('/api/agent-model', (req, res) => {
   res.json({ ok: true, agents: cfg.agents });
 });
 
+// ---- 单个 agent 执行池切换：决定 CLI 归属与额度闸。切池清模型个体覆盖（旧池模型名对新池无意义）；
+// 在途安全：领单时池名已盖章进工单 frontmatter，执行器只认章——切池只影响下一单 ----
+app.post('/api/agent-pool', (req, res) => {
+  if (!ready(res)) return;
+  const { id, 池 } = req.body || {};
+  const a = (cfg.agents || []).find((x) => x.id === id);
+  if (!a) return res.status(400).json({ error: 'agent 不存在：' + id });
+  const v = String(池 || '').trim();
+  if (!cfg.执行池 || !cfg.执行池[v]) return res.status(400).json({ error: '未知池：' + v });
+  if (a.执行池 !== v) {
+    const hadModel = !!a.模型;
+    a.执行池 = v; delete a.模型;
+    saveCfg();
+    journal.append(ROOT, `执行池切换：${id} → ${v} 池${hadModel ? '（模型覆盖已清，回池默认）' : ''}`);
+  }
+  res.json({ ok: true, agents: cfg.agents });
+});
+
 // ---- 上游改动标记（复查#8 = D36）：锚号改版 → 引用它的未完成单全标待复核 ----
 app.post('/api/review-flag', (req, res) => {
   if (!ready(res)) return;

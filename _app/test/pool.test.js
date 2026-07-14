@@ -91,6 +91,17 @@ t('依赖已完成 → 可领', async () => {
   assert.equal(r.id, 'A');
 });
 
+t('切池：agent 个体执行池覆盖职能默认，领单盖新池章', async () => {
+  const root = makeRoot();
+  // 程序职能默认 codex 池；程序-B 个体切到 claude 池 → 领单章应为 claude
+  const cfg2 = { ...CFG, agents: [...CFG.agents, { id: '程序-B', 职能: '程序', 执行池: 'claude' }] };
+  seed(root, '池', { id: 'A', 职能: '程序' });
+  const r = await pool.claim(root, cfg2, '程序-B');
+  assert.equal(r.ok, true);
+  assert.equal(r.执行池, 'claude');
+  assert.equal(store.find(root, 'A').fm.执行池, 'claude');
+});
+
 t('原子领单竞态：跳过被抢走的，领下一张', async () => {
   const root = makeRoot();
   seed(root, '池', { id: 'A', 职能: '策划', 优先级: 'P0' });
