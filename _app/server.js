@@ -40,7 +40,7 @@ app.get('/api/board', (req, res) => {
   const out = {};
   for (const s of store.STATES) out[s] = snap[s].map((t) => ({
     id: t.id, title: t.fm.title, 职能: t.fm.职能, 优先级: t.fm.优先级, 规模: t.fm.规模,
-    QA: t.fm.QA, 验收方式: t.fm.验收方式, 主办: t.fm.主办 || null,
+    QA: t.fm.QA, 验收方式: t.fm.验收方式, 主办: t.fm.主办 || null, 项目: t.fm.项目 || null, // D42 多项目视界按此归属
     父单: t.fm.父单 || null, 依赖: t.fm.依赖 || null,
     领单时间: t.fm.领单时间 || null, 交付时间: t.fm.交付时间 || null, 滞留告警: !!t.fm.滞留告警,
   }));
@@ -359,8 +359,8 @@ app.get('/api/ticket', (req, res) => {
 // ---- 决策台（P4）：待验收 + 待定夺 ----
 app.get('/api/decisions', (req, res) => {
   if (!ready(res)) return;
-  const accept = store.list(ROOT, '待验收').map((t) => ({ id: t.id, title: t.fm.title, 职能: t.fm.职能, 验收方式: t.fm.验收方式, QA: t.fm.QA }));
-  const escal = store.list(ROOT, '待定夺').map((t) => ({ id: t.id, title: t.fm.title, 职能: t.fm.职能, 自修次数: t.fm.自修次数 || 0 }));
+  const accept = store.list(ROOT, '待验收').map((t) => ({ id: t.id, title: t.fm.title, 职能: t.fm.职能, 验收方式: t.fm.验收方式, QA: t.fm.QA, 项目: t.fm.项目 }));
+  const escal = store.list(ROOT, '待定夺').map((t) => ({ id: t.id, title: t.fm.title, 职能: t.fm.职能, 自修次数: t.fm.自修次数 || 0, 项目: t.fm.项目 }));
   res.json({ 待验收: accept, 待定夺: escal, 积压闸: (cfg.闸值 || {}).待验收积压闸, 积压: accept.length });
 });
 
@@ -466,12 +466,14 @@ app.get('/api/style-lib', (req, res) => {
 app.post('/api/stylelib/axiom', (req, res) => {
   if (!ready(res)) return;
   const { 标题, 正文, 源单 } = req.body || {};
+  let axProj = String((req.body || {}).项目 || '').trim() || null;
   if (源单) {
     const t = store.find(ROOT, 源单);
     if (!t) return res.status(400).json({ error: '源单不存在：' + 源单 });
     if (t.state !== '完成') return res.status(400).json({ error: `只有完成单可入标杆（${源单} 当前 ${t.state}）` });
+    axProj = t.fm.项目 || (cfg.项目 && cfg.项目.默认) || axProj; // 归属跟源单走（多项目视界）
   }
-  const r = stylelib.addAxiom(ROOT, { 标题, 正文, 源单 });
+  const r = stylelib.addAxiom(ROOT, { 标题, 正文, 源单, 项目: axProj });
   if (!r.ok) return res.status(400).json(r);
   journal.append(ROOT, `入标杆：「${r.标题}」（来源 ${源单 || '手工'}，审批点④）`);
   res.json(r);
@@ -492,7 +494,7 @@ app.post('/api/stylelib/art', (req, res) => {
   if (t && t.state !== '完成') return res.status(400).json({ error: `只有完成单可入库（${源单} 当前 ${t.state}）` });
   const projName = (t && t.fm.项目) || (cfg.项目 && cfg.项目.默认);
   const proj = cfg.项目 && cfg.项目.注册 && cfg.项目.注册[projName];
-  const r = stylelib.addArt(ROOT, { 源路径, 项目路径: proj && proj.路径, 说明, 源单 });
+  const r = stylelib.addArt(ROOT, { 源路径, 项目路径: proj && proj.路径, 说明, 源单, 项目: projName });
   if (!r.ok) return res.status(400).json(r);
   journal.append(ROOT, `入美术库：${r.name}（来源 ${源单 || '手工'}，审批点④）`);
   res.json(r);

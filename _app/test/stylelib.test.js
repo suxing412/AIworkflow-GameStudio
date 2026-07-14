@@ -20,6 +20,16 @@ t('入标杆 → 解析回环：标题/正文/来源/日期齐', () => {
   assert.match(es[0].日期, /^\d{4}-\d{2}-\d{2}$/);
 });
 
+t('D42 项目归属：标杆落款带项目段并解析回环；旧格式（无项目段）项目为空', () => {
+  const root = makeRoot();
+  fs.mkdirSync(path.join(root, '风格库'), { recursive: true });
+  sl.addAxiom(root, { 标题: '甲公理', 正文: 'x', 源单: 'A-01', 项目: '甲' });
+  sl.addAxiom(root, { 标题: '旧公理', 正文: 'y', 源单: 'B-01' }); // 不带项目 = 旧格式
+  const es = sl.parseAxioms(root);
+  assert.equal(es.find((e) => e.标题 === '甲公理').项目, '甲');
+  assert.equal(es.find((e) => e.标题 === '旧公理').项目, null);
+});
+
 t('同名条目拒收；空标题/超长拒收', () => {
   const root = makeRoot();
   fs.mkdirSync(path.join(root, '风格库'), { recursive: true });
@@ -45,13 +55,14 @@ t('入美术库：复制 + 旁存来源 meta + 列表可见', () => {
   const root = makeRoot();
   const proj = path.join(root, 'fakeproj'); fs.mkdirSync(path.join(proj, 'Art'), { recursive: true });
   fs.writeFileSync(path.join(proj, 'Art', 'hero.png'), 'PNG');
-  const r = sl.addArt(root, { 源路径: 'Art/hero.png', 项目路径: proj, 说明: '主角立绘', 源单: 'TK-20' });
+  const r = sl.addArt(root, { 源路径: 'Art/hero.png', 项目路径: proj, 说明: '主角立绘', 源单: 'TK-20', 项目: 'TK' });
   assert.ok(r.ok);
   const list = sl.listArt(root);
   assert.equal(list.length, 1);
   assert.equal(list[0].name, 'hero.png');
   assert.ok(list[0].isImage);
   assert.equal(list[0].来源.源单, 'TK-20');
+  assert.equal(list[0].来源.项目, 'TK'); // D42 项目归属旁存
   // 原件不动
   assert.ok(fs.existsSync(path.join(proj, 'Art', 'hero.png')));
 });
