@@ -57,8 +57,8 @@ html[data-theme="glass"] body::before { content:''; position:fixed; inset:0; poi
 /* 玻璃卡顶缘 1px 受光：暗底上才可见（白卡上是无效像素，日间不加）。
    悬停/按下要显式带上高光，否则本规则特异度更高会吃掉抬影反馈 */
 html[data-theme="glass"] .card { box-shadow:var(--shadow-sm), inset 0 1px 0 var(--edge-hl); }
-html[data-theme="glass"] .bcard2:hover, html[data-theme="glass"] .inbox-row:hover { box-shadow:var(--shadow-md), inset 0 1px 0 var(--edge-hl); }
-html[data-theme="glass"] .bcard2:active, html[data-theme="glass"] .inbox-row:active { box-shadow:inset 0 1px 0 var(--edge-hl); }
+html[data-theme="glass"] .bcard2:hover, html[data-theme="glass"] .inbox-row:hover, html[data-theme="glass"] .hubcard:hover { box-shadow:var(--shadow-md), inset 0 1px 0 var(--edge-hl); }
+html[data-theme="glass"] .bcard2:active, html[data-theme="glass"] .inbox-row:active, html[data-theme="glass"] .hubcard:active { box-shadow:inset 0 1px 0 var(--edge-hl); }
 html[data-theme="glass"] body::after { opacity:.02; } /* 噪点在暗底上收敛一点 */
 
 * { box-sizing:border-box; }
@@ -229,9 +229,28 @@ input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); outlin
 
 @media (prefers-reduced-motion: reduce) {
   .vin, .gsr, .modal2, .bump, #run-dot.on, #run-dot.on.live, .ghosting, .tlseg, .dot.breathe-warn, .dot.breathe-err { animation:none; }
-  .bcard2:hover, .inbox-row:hover, .gear:active, .backbtn:active, .paramcard .stepper button:active { transform:none; }
-  .snav a, .btn, .gear, .backbtn, .paramcard .egbtn, .paramcard .stepper button, .bcard2, .inbox-row, .trow2, .searchbox input { transition-duration:.01s; }
+  .bcard2:hover, .inbox-row:hover, .hubcard:hover, .gear:active, .backbtn:active, .paramcard .stepper button:active { transform:none; }
+  .snav a, .btn, .gear, .backbtn, .paramcard .egbtn, .paramcard .stepper button, .bcard2, .inbox-row, .trow2, .hubcard, .searchbox input { transition-duration:.01s; }
 }
+
+/* ===== P0 项目启动页（D42 多项目视界）===== */
+.logohome { display:block; flex-shrink:0; }
+a.gear { text-decoration:none; }
+.hubgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:20px; margin-top:28px; }
+.hubcard { padding:20px 24px; cursor:pointer;
+  transition:transform 150ms var(--ease-out), border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out); }
+.hubcard:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); border-color:var(--ink3); }
+.hubcard:active { transform:translateY(0); }
+.hubcard .hn { display:flex; align-items:center; gap:10px; font-size:16px; }
+.hubcard .hpath { font-size:10.5px; color:var(--ink3); margin-top:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hubcard .hnote { font-size:12px; color:var(--ink2); margin-top:8px; }
+.hubcard .hcounts { display:flex; gap:20px; margin-top:16px; }
+.hubcard .hc { font-size:11px; color:var(--ink3); display:flex; flex-direction:column; gap:2px; }
+.hubcard .hc i { font-style:normal; font-family:var(--mono); font-size:18px; font-weight:500; color:var(--ink); }
+.hubcard .hc i.err { color:var(--danger); }
+.hubcard.add { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  color:var(--accent-ink); text-decoration:none; border-style:dashed; font-size:13px; font-weight:500; min-height:132px; }
+.hubcard.add:hover { border-color:var(--accent-ink); }
 
 /* ===== P1 总览 ===== */
 .stat-strip { height:84px; border-radius:14px; display:flex; align-items:center; padding:0 32px; margin-top:24px; }

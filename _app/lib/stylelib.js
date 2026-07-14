@@ -8,7 +8,8 @@ const axPath = (root) => path.join(root, '风格库', '策划标杆.md');
 const artDir = (root) => path.join(root, '风格库', '美术库');
 const IMG_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'];
 
-// 解析标杆条目（头部 # 行保留原样，不属于条目）
+// 解析标杆条目（头部 # 行保留原样，不属于条目）。
+// 多项目视界（v0.12）：来源落款可带第三段「· 项目名」；旧条目无项目段 = 归默认项目
 function parseAxioms(root) {
   let raw = '';
   try { raw = fs.readFileSync(axPath(root), 'utf8'); } catch { return []; }
@@ -17,24 +18,24 @@ function parseAxioms(root) {
   for (const p of parts) {
     const lines = p.split('\n');
     const 标题 = lines[0].trim();
-    const bodyLines = []; let 源单 = null; let 日期 = null;
+    const bodyLines = []; let 源单 = null; let 日期 = null; let 项目 = null;
     for (const l of lines.slice(1)) {
-      const m = l.match(/^——来源\s+(\S+)\s+·\s+(\d{4}-\d{2}-\d{2})/);
-      if (m) { 源单 = m[1]; 日期 = m[2]; continue; }
+      const m = l.match(/^——来源\s+(\S+)\s+·\s+(\d{4}-\d{2}-\d{2})(?:\s+·\s+(\S+))?/);
+      if (m) { 源单 = m[1]; 日期 = m[2]; 项目 = m[3] || null; continue; }
       if (l.trim()) bodyLines.push(l.trim());
     }
-    if (标题) entries.push({ 标题, 正文: bodyLines.join(' '), 源单, 日期 });
+    if (标题) entries.push({ 标题, 正文: bodyLines.join(' '), 源单, 日期, 项目 });
   }
   return entries;
 }
 
-function addAxiom(root, { 标题, 正文, 源单 }) {
+function addAxiom(root, { 标题, 正文, 源单, 项目 }) {
   const t = String(标题 || '').trim(), b = String(正文 || '').trim();
   if (!t || !b) return { ok: false, error: '标题与提炼正文都不能为空' };
   if (t.length > 40 || b.length > 300) return { ok: false, error: '标题 ≤40 字、正文 ≤300 字（标杆要精炼）' };
   if (parseAxioms(root).some((e) => e.标题 === t)) return { ok: false, error: '同名条目已在标杆：' + t };
   const date = new Date().toISOString().slice(0, 10);
-  const block = `\n## ${t}\n${b}\n\n——来源 ${源单 || '手工'} · ${date}\n`;
+  const block = `\n## ${t}\n${b}\n\n——来源 ${源单 || '手工'} · ${date}${项目 ? ` · ${项目}` : ''}\n`;
   if (!fs.existsSync(axPath(root))) fs.writeFileSync(axPath(root), '# 策划标杆（提炼式设计公理）\n', 'utf8');
   fs.appendFileSync(axPath(root), block, 'utf8');
   return { ok: true, 标题: t };
@@ -64,8 +65,9 @@ function listArt(root) {
   });
 }
 
-// 入美术库：从项目仓库复制产出文件（源路径限制在项目仓库内，防任意读取）
-function addArt(root, { 源路径, 项目路径, 说明, 源单 }) {
+// 入美术库：从项目仓库复制产出文件（源路径限制在项目仓库内，防任意读取）。
+// 项目 名字随 meta 旁存——多项目视界按它归属；旧条目无此字段 = 归默认项目
+function addArt(root, { 源路径, 项目路径, 说明, 源单, 项目 }) {
   const raw = String(源路径 || '').trim();
   if (!raw) return { ok: false, error: '源文件路径不能为空' };
   const abs = path.isAbsolute(raw) ? path.normalize(raw) : path.normalize(path.join(项目路径 || '', raw));
@@ -78,7 +80,7 @@ function addArt(root, { 源路径, 项目路径, 说明, 源单 }) {
   if (fs.existsSync(path.join(artDir(root), dest))) dest = `${源单 || 'dup'}_${dest}`; // 撞名带单号前缀
   fs.copyFileSync(abs, path.join(artDir(root), dest));
   fs.writeFileSync(path.join(artDir(root), dest + '.meta.json'),
-    JSON.stringify({ 源单: 源单 || null, 源路径: abs.replace(/\\/g, '/'), 说明: String(说明 || '').slice(0, 100), 日期: new Date().toISOString().slice(0, 10) }, null, 2), 'utf8');
+    JSON.stringify({ 源单: 源单 || null, 项目: 项目 || null, 源路径: abs.replace(/\\/g, '/'), 说明: String(说明 || '').slice(0, 100), 日期: new Date().toISOString().slice(0, 10) }, null, 2), 'utf8');
   return { ok: true, name: dest };
 }
 
